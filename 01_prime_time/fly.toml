@@ -1,4 +1,4 @@
-# fly.toml app configuration file generated for prime-time on 2025-04-08T01:58:35+02:00
+# fly.toml app configuration file generated for prime-time on 2025-04-08T02:25:34+02:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -7,7 +7,11 @@ app = 'prime-time'
 primary_region = 'mad'
 
 [build]
-  dockerfile = 'Dockerfile'
+  dockerfile = '../Dockerfile'
+  build-target = 'runner'
+
+  [build.args]
+    PROJECT_NAME = 'prime_time'
 
 [env]
   PORT = '4000'

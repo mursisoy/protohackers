@@ -60,7 +60,9 @@ RUN mix release
 
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
-FROM ${RUNNER_IMAGE}
+FROM ${RUNNER_IMAGE} as runner
+
+ARG PROJECT_NAME
 
 RUN apt-get update -y && apt-get install -y libstdc++6 openssl libncurses5 locales \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
@@ -83,10 +85,10 @@ ENV ECTO_IPV6=true
 ENV ERL_AFLAGS="-proto_dist inet6_tcp"
 
 # Only copy the final release from the build stage
-COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/smoke_test ./
+COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/${PROJECT_NAME} ./
 
 USER nobody
 
 EXPOSE 4000
 
-CMD ["/app/bin/smoke_test", "start"]
+CMD ["/app/bin/prime_time", "start"]
