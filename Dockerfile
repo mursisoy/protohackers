@@ -87,8 +87,16 @@ ENV ERL_AFLAGS="-proto_dist inet6_tcp"
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/${PROJECT_NAME} ./
 
+COPY <<EOF /app/entrypoint.sh
+#!/bin/bash
+# start the elixir application
+exec /app/bin/${PROJECT_NAME} start
+EOF
+
+RUN chmod +x /app/entrypoint.sh
+
 USER nobody
 
 EXPOSE 4000
 
-CMD ["/app/bin/prime_time", "start"]
+ENTRYPOINT ["/app/entrypoint.sh"]
