@@ -10,6 +10,12 @@ defmodule BudgetChat.Connection do
     GenServer.start_link(__MODULE__, socket)
   end
 
+  @type t() :: %__MODULE__{
+          socket: :gen_tcp.socket(),
+          username: String.t() | nil,
+          buffer: binary()
+        }
+
   defstruct [:socket, :username, buffer: <<>>]
 
   @impl GenServer
