@@ -12,13 +12,13 @@ defmodule BudgetChat.Connection do
 
   defstruct [:socket, :username, buffer: <<>>]
 
-  @impl true
+  @impl GenServer
   def init(socket) do
     send(self(), :greetings)
     {:ok, %__MODULE__{socket: socket}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info(message, state)
 
   def handle_info(
@@ -63,6 +63,7 @@ defmodule BudgetChat.Connection do
     {:noreply, state}
   end
 
+  @spec handle_new_data(t()) :: {:noreply, t()} | {:stop, :normal, t()}
   defp handle_new_data(%__MODULE__{buffer: buffer} = state) do
     case String.split(buffer, ["\r\n", "\n"], parts: 2) do
       [line, rest] ->
@@ -74,8 +75,9 @@ defmodule BudgetChat.Connection do
     end
   end
 
+  @spec process_message(String.t(), t()) :: {:noreply, t()} | {:stop, :normal, t()}
   defp process_message(username, %__MODULE__{username: nil} = state) do
-    with {:validation, true} <- {:validation, valid_username(username)},
+    with {:validation, true} <- {:validation, valid_username?(username)},
          {:ok, _} <- Registry.register(UsernameRegistry, username, :no_value) do
       room_users =
         Registry.lookup(BroadcastRegistry, :broadcast)
@@ -101,6 +103,7 @@ defmodule BudgetChat.Connection do
     handle_new_data(state)
   end
 
+  @spec chat_send(binary()) :: :ok
   defp chat_send(message) do
     sender = self()
 
@@ -113,7 +116,8 @@ defmodule BudgetChat.Connection do
     end)
   end
 
-  defp valid_username(username) do
+  @spec valid_username?(binary()) :: boolean()
+  defp valid_username?(username) do
     String.match?(username, ~r/^[a-zA-Z0-9_]+$/)
   end
 end
