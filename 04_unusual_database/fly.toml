@@ -1,0 +1,33 @@
+# fly.toml app configuration file generated for unusual-database on 2025-04-27T20:23:16+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'unusual-database'
+primary_region = 'mad'
+
+[experimental]
+
+[build]
+dockerfile = '../Dockerfile'
+build-target = 'runner'
+
+[build.args]
+PROJECT_NAME = 'unusual_database'
+
+[env]
+PORT = '4000'
+
+[[services]]
+protocol = 'udp'
+internal_port = 4000
+auto_stop_machines = 'stop'
+auto_start_machines = true
+min_machines_running = 0
+processes = ['app']
+
+[[services.ports]]
+port = 4000
+
+[[vm]]
+size = 'shared-cpu-1x'
