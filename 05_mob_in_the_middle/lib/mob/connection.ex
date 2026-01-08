@@ -1,7 +1,5 @@
-defmodule BudgetChat.Connection do
+defmodule Mob.Connection do
   use GenServer, restart: :temporary
-
-  alias BudgetChat.{BroadcastRegistry, UsernameRegistry}
 
   require Logger
 

@@ -1,6 +1,6 @@
-defmodule MeansEnd do
+defmodule Mob do
   @moduledoc """
-  Documentation for `MeansEnd`.
+  Documentation for `Mob`.
   """
 
   @doc """
@@ -8,7 +8,7 @@ defmodule MeansEnd do
 
   ## Examples
 
-      iex> MeansEnd.hello()
+      iex> Mob.hello()
       :world
 
   """

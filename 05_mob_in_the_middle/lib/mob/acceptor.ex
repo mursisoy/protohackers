@@ -1,4 +1,4 @@
-defmodule BudgetChat.Acceptor do
+defmodule Mob.Acceptor do
   use GenServer
 
   require Logger
@@ -43,7 +43,7 @@ defmodule BudgetChat.Acceptor do
         {:ok, pid} =
           DynamicSupervisor.start_child(
             state.supervisor,
-            {BudgetChat.Connection, socket}
+            {Mob.Connection, socket}
           )
 
         :ok = :gen_tcp.controlling_process(socket, pid)

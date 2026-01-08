@@ -1,19 +1,13 @@
-defmodule SmokeTest.MixProject do
+defmodule Mob.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :smoke_test,
+      app: :mob,
       version: "0.1.0",
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
-      deps: deps(),
-      releases: [
-        smoke_test: [
-          include_executables_for: [:unix],
-          applications: [runtime_tools: :permanent]
-        ]
-      ]
+      deps: deps()
     ]
   end
 
@@ -21,7 +15,7 @@ defmodule SmokeTest.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {SmokeTest.Application, []}
+      mod: {Mob.Application, []}
     ]
   end
 
