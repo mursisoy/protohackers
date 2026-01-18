@@ -9,17 +9,34 @@ defmodule Mob.Connection do
   end
 
   @type t() :: %__MODULE__{
-          socket: :gen_tcp.socket(),
-          username: String.t() | nil,
-          buffer: binary()
+          downstream_socket: :gen_tcp.socket(),
+          upstream_socket: :gen_tcp.socket(),
+          downstream_buffer: binary(),
+          upstream_buffer: binary()
         }
 
-  defstruct [:socket, :username, buffer: <<>>]
+  defstruct [
+    :downstream_socket,
+    :upstream_socket,
+    downstream_buffer: <<>>,
+    upstream_buffer: <<>>
+  ]
 
   @impl GenServer
   def init(socket) do
-    send(self(), :greetings)
-    {:ok, %__MODULE__{socket: socket}}
+    [host, port] =
+      :mob
+      |> Application.fetch_env!(:upstream_server)
+      |> String.split(":", parts: 2)
+
+    {:ok, upstream_socket} =
+      :gen_tcp.connect(to_charlist(host), String.to_integer(port), [
+        :binary,
+        active: true,
+        packet: 0
+      ])
+
+    {:ok, %__MODULE__{downstream_socket: socket, upstream_socket: upstream_socket}}
   end
 
   @impl GenServer
@@ -27,101 +44,119 @@ defmodule Mob.Connection do
 
   def handle_info(
         {:tcp, socket, data},
-        %__MODULE__{socket: socket} = state
+        %__MODULE__{downstream_socket: socket} = state
       ) do
-    state = update_in(state.buffer, &(&1 <> data))
+    state = update_in(state.downstream_buffer, &(&1 <> data))
     :ok = :inet.setopts(socket, active: :once)
-    handle_new_data(state)
+    handle_new_data(socket, state)
+  end
+
+  def handle_info(
+        {:tcp, socket, data},
+        %__MODULE__{upstream_socket: socket} = state
+      ) do
+    state = update_in(state.upstream_buffer, &(&1 <> data))
+    :ok = :inet.setopts(socket, active: :once)
+    handle_new_data(socket, state)
   end
 
   def handle_info(
         {:tcp_closed, socket},
-        %__MODULE__{socket: socket, username: nil} = state
+        %__MODULE__{
+          downstream_socket: socket,
+          upstream_socket: upstream_socket
+        } = state
       ) do
+    :gen_tcp.close(upstream_socket)
     {:stop, :normal, state}
   end
 
   def handle_info(
         {:tcp_closed, socket},
-        %__MODULE__{socket: socket, username: username} = state
+        %__MODULE__{
+          downstream_socket: downstream_socket,
+          upstream_socket: socket
+        } = state
       ) do
-    chat_send("* #{username} has left the room")
+    :gen_tcp.close(downstream_socket)
     {:stop, :normal, state}
   end
 
   def handle_info(
         {:tcp_error, socket, reason},
-        %__MODULE__{socket: socket} = state
+        %__MODULE__{downstream_socket: socket, upstream_socket: upstream_socket} = state
       ) do
     Logger.error("TCP connection error: #{inspect(reason)}")
+    :gen_tcp.close(upstream_socket)
     {:stop, :normal, state}
   end
 
-  def handle_info(:greetings, state) do
-    :ok = :gen_tcp.send(state.socket, "who?\n")
-    {:noreply, state}
+  def handle_info(
+        {:tcp_error, socket, reason},
+        %__MODULE__{downstream_socket: downstream_socket, upstream_socket: socket} = state
+      ) do
+    Logger.error("TCP connection error: #{inspect(reason)}")
+    :gen_tcp.close(downstream_socket)
+    {:stop, :normal, state}
   end
 
-  def handle_info({:broadcast, message}, state) do
-    :ok = :gen_tcp.send(state.socket, message <> "\n")
-    {:noreply, state}
+  @spec handle_new_data(:gen_tcp.socket(), t()) :: {:noreply, t()} | {:stop, :normal, t()}
+  defp handle_new_data(
+         socket,
+         %__MODULE__{
+           upstream_socket: socket,
+           upstream_buffer: buffer
+         } = state
+       ) do
+    do_handle_new_data(:upstream_buffer, buffer, state)
   end
 
-  @spec handle_new_data(t()) :: {:noreply, t()} | {:stop, :normal, t()}
-  defp handle_new_data(%__MODULE__{buffer: buffer} = state) do
+  defp handle_new_data(
+         socket,
+         %__MODULE__{
+           downstream_socket: socket,
+           downstream_buffer: buffer
+         } = state
+       ) do
+    do_handle_new_data(:downstream_buffer, buffer, state)
+  end
+
+  @spec do_handle_new_data(atom(), binary(), t()) :: {:noreply, t()} | {:stop, :normal, t()}
+  defp do_handle_new_data(buffer_key, buffer, state) do
     case String.split(buffer, ["\r\n", "\n"], parts: 2) do
       [line, rest] ->
-        new_state = %__MODULE__{state | buffer: rest}
-        process_message(line, new_state)
+        new_state = put_in(state, [Access.key!(buffer_key)], rest)
+
+        buffer_key
+        |> boguscoin_rewriter()
+        |> send_message(line, new_state)
 
       _ ->
         {:noreply, state}
     end
   end
 
-  @spec process_message(String.t(), t()) :: {:noreply, t()} | {:stop, :normal, t()}
-  defp process_message(username, %__MODULE__{username: nil} = state) do
-    with {:validation, true} <- {:validation, valid_username?(username)},
-         {:ok, _} <- Registry.register(UsernameRegistry, username, :no_value) do
-      room_users =
-        Registry.lookup(BroadcastRegistry, :broadcast)
-        |> Enum.map_join(", ", fn {_, value} -> value end)
-
-      {:ok, _} = Registry.register(BroadcastRegistry, :broadcast, username)
-      :ok = :gen_tcp.send(state.socket, "* The room contains: #{room_users}\n")
-      chat_send("* #{username} has entered the room")
-      handle_new_data(put_in(state.username, username))
-    else
-      {:validation, false} ->
-        :gen_tcp.send(state.socket, "Not a valid username\n")
-        {:stop, :normal, %__MODULE__{state | buffer: <<>>}}
-
-      {:error, {:already_registered, _}} ->
-        :gen_tcp.send(state.socket, "Username already in use\n")
-        {:stop, :normal, %__MODULE__{state | buffer: <<>>}}
-    end
+  @spec send_message(String.t(), atom(), t()) ::
+          {:noreply, t()} | {:stop, :normal, t()}
+  defp send_message(
+         message,
+         :upstream_buffer,
+         state
+       ) do
+    :gen_tcp.send(state.downstream_socket, message <> "\n")
+    handle_new_data(state.upstream_socket, state)
   end
 
-  defp process_message(message, state) do
-    chat_send("[#{state.username}] #{message}")
-    handle_new_data(state)
+  defp send_message(
+         message,
+         :downstream_buffer,
+         state
+       ) do
+    :gen_tcp.send(state.upstream_socket, message <> "\n")
+    handle_new_data(state.downstream_socket, state)
   end
 
-  @spec chat_send(binary()) :: :ok
-  defp chat_send(message) do
-    sender = self()
-
-    Registry.dispatch(BroadcastRegistry, :broadcast, fn entries ->
-      Enum.each(entries, fn {pid, _value} ->
-        if pid != sender do
-          send(pid, {:broadcast, message})
-        end
-      end)
-    end)
-  end
-
-  @spec valid_username?(binary()) :: boolean()
-  defp valid_username?(username) do
-    String.match?(username, ~r/^[a-zA-Z0-9_]+$/)
+  defp boguscoin_rewriter(message) do
+    String.replace(message, ~r/(7[a-zA-Z0-9]{25,34})/, "7YWHMfk9JZe0LM0g1ZauHuiSxhI")
   end
 end
