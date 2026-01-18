@@ -127,9 +127,9 @@ defmodule Mob.Connection do
       [line, rest] ->
         new_state = put_in(state, [Access.key!(buffer_key)], rest)
 
-        buffer_key
+        line
         |> boguscoin_rewriter()
-        |> send_message(line, new_state)
+        |> send_message(buffer_key, new_state)
 
       _ ->
         {:noreply, state}
