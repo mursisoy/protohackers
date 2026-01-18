@@ -10,7 +10,7 @@ defmodule BudgetChat.Application do
     children = [
       {Registry, keys: :duplicate, name: BudgetChat.BroadcastRegistry},
       {Registry, keys: :unique, name: BudgetChat.UsernameRegistry},
-      {BudgetChat.Acceptor, port: port: Application.fetch_env!(:budget_chat, :port)}
+      {BudgetChat.Acceptor, port: Application.fetch_env!(:budget_chat, :port)}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
